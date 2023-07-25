@@ -131,10 +131,16 @@ def main():
     # Parse the user input
     parser = argparse.ArgumentParser(description="Configurable plotting script")
     parser.add_argument(
-        "--input",
+        "--input1",
         type=str,
-        default="prmon.txt",
-        help="PrMon TXT output that will be used as input",
+        default="prmon.athenaHLT.txt",
+        help="First PrMon TXT output that will be used as input",
+    )
+    parser.add_argument(
+        "--input2",
+        type=str,
+        default="prmon.athenaHLT.txt.1",
+        help="Second PrMon TXT output that will be used as input",
     )
     parser.add_argument(
         "--output",
@@ -194,22 +200,37 @@ def main():
     args = parser.parse_args()
 
     # Check the input file exists
-    if not os.path.exists(args.input):
-        print(f"ERROR:: Input file {args.input} does not exists")
+    if not os.path.exists(args.input1):
+        print(f"ERROR:: Input file {args.input1} does not exist")
+        sys.exit(-1)
+    
+    if not os.path.exists(args.input2):
+        print(f"ERROR:: Input file {args.input2} does not exist")
         sys.exit(-1)
 
     # Load the data
-    data = pd.read_csv(args.input, sep="\t")
-    data["Time"] = pd.to_datetime(data["Time"], unit="s")
+    data1 = pd.read_csv(args.input1, sep="\t")
+    data1["Time"] = pd.to_datetime(data1["Time"], unit="s")
+
+    data2 = pd.read_csv(args.input2, sep="\t")
+    data2["Time"] = pd.to_datetime(data2["Time"], unit="s")
 
     # Check the variables are in data
-    if args.xvar not in list(data):
-        print(f"ERROR:: Variable {args.xvar} is not available in data")
+    if args.xvar not in list(data1):
+        print(f"ERROR:: Variable {args.xvar} is not available in data set 1")
         sys.exit(-1)
     ylist = args.yvar.split(",")
     for carg in ylist:
-        if carg not in list(data):
-            print(f"ERROR:: Variable {carg} is not available in data")
+        if carg not in list(data1):
+            print(f"ERROR:: Variable {carg} is not available in data set 1")
+            sys.exit(-1)
+
+    if args.xvar not in list(data2):
+        print(f"ERROR:: Variable {args.xvar} is not available in data set 2")
+        sys.exit(-1)
+    for carg in ylist:
+        if carg not in list(data2):
+            print(f"ERROR:: Variable {carg} is not available in data set 2")
             sys.exit(-1)
 
     # Check the consistency of variables and units
@@ -257,24 +278,35 @@ def main():
 
     # Here comes the figure and data extraction
     fig, ax1 = plt.subplots()
-    xdata = np.array(data[xlabel]) * xmultiplier
-    ydlist = []
+    xdata1 = np.array(data1[xlabel]) * xmultiplier
+    xdata2 = np.array(data2[xlabel]) * xmultiplier
+
+    ydlist1 = []
     for carg in ylist:
         if args.diff:
-            num = np.array(data[carg].diff()) * ymultiplier
-            denom = np.array(data[xlabel].diff()) * xmultiplier
+            num = np.array(data1[carg].diff()) * ymultiplier
+            denom = np.array(data1[xlabel].diff()) * xmultiplier
             ratio = np.where(denom != 0, num / denom, np.nan)
-            ydlist.append(ratio)
+            ydlist1.append(ratio)
         else:
-            ydlist.append(np.array(data[carg]) * ymultiplier)
-    if args.stacked:
-        ydata = np.vstack(ydlist)
-        plt.stackplot(
-            xdata, ydata, lw=2, labels=[LEGENDNAMES[val] for val in ylist], alpha=0.6
-        )
-    else:
-        for cidx, cdata in enumerate(ydlist):
-            plt.plot(xdata, cdata, lw=2, label=LEGENDNAMES[ylist[cidx]])
+            ydlist1.append(np.array(data1[carg]) * ymultiplier)
+    
+    ydlist2 = []
+    for carg in ylist:
+        if args.diff:
+            num = np.array(data2[carg].diff()) * ymultiplier
+            denom = np.array(data2[xlabel].diff()) * xmultiplier
+            ratio = np.where(denom != 0, num / denom, np.nan)
+            ydlist2.append(ratio)
+        else:
+            ydlist2.append(np.array(data2[carg]) * ymultiplier)
+
+    for cidx, cdata in enumerate(ydlist1):
+        plt.plot(xdata1, cdata, lw=2, label=LEGENDNAMES[ylist[cidx]])
+
+    for cidx, cdata in enumerate(ydlist2):
+        plt.plot(xdata2, cdata, lw=2, linestyle='dashed', label=LEGENDNAMES[ylist[cidx]])
+
     plt.legend(loc=0)
     if "Time" in xlabel:
         formatter = mpl.dates.DateFormatter("%H:%M:%S")
@@ -290,6 +322,7 @@ def main():
     else:
         fylabel = get_axis_label(ylist[0])
         fyunit = args.yunit
+
     plt.title("Plot of {} vs {}".format(fxlabel, fylabel), y=1.05)
     plt.xlabel((fxlabel + " [" + fxunit + "]") if fxunit != "1" else fxlabel)
     plt.ylabel((fylabel + " [" + fyunit + "]") if fyunit != "1" else fylabel)
@@ -298,7 +331,6 @@ def main():
 
     print(f"INFO:: Saved output into {output}")
     sys.exit(0)
-
 
 if "__main__" in __name__:
     main()
